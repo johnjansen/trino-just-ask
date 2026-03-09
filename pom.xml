@@ -7,16 +7,10 @@
     <groupId>io.trino.plugin</groupId>
     <artifactId>trino-just-ask</artifactId>
     <version>1.0-SNAPSHOT</version>
-    <packaging>trino-plugin</packaging>
+    <packaging>jar</packaging>
 
     <name>Trino Just Ask</name>
     <description>Natural language to SQL plugin for Trino</description>
-
-    <parent>
-        <groupId>io.trino</groupId>
-        <artifactId>trino-root</artifactId>
-        <version>473</version>
-    </parent>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -24,9 +18,13 @@
         <maven.compiler.target>21</maven.compiler.target>
         <trino.version>473</trino.version>
         <dep.airlift.version>247</dep.airlift.version>
+        <dep.guice.version>7.0.0</dep.guice.version>
+        <dep.guava.version>33.4.0-jre</dep.guava.version>
+        <dep.jackson.version>2.18.2</dep.jackson.version>
     </properties>
 
     <dependencies>
+        <!-- Trino SPI (provided at runtime) -->
         <dependency>
             <groupId>io.trino</groupId>
             <artifactId>trino-spi</artifactId>
@@ -34,6 +32,7 @@
             <scope>provided</scope>
         </dependency>
 
+        <!-- Airlift config -->
         <dependency>
             <groupId>io.airlift</groupId>
             <artifactId>configuration</artifactId>
@@ -46,26 +45,56 @@
             <version>${dep.airlift.version}</version>
         </dependency>
 
+        <!-- Guice -->
         <dependency>
             <groupId>com.google.inject</groupId>
             <artifactId>guice</artifactId>
+            <version>${dep.guice.version}</version>
         </dependency>
 
+        <!-- Guava -->
         <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
+            <version>${dep.guava.version}</version>
+        </dependency>
+
+        <!-- Jackson (annotations provided by SPI, databind/core bundled) -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
+            <version>${dep.jackson.version}</version>
+            <scope>provided</scope>
         </dependency>
 
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
+            <version>${dep.jackson.version}</version>
         </dependency>
 
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-core</artifactId>
+            <version>${dep.jackson.version}</version>
         </dependency>
 
+        <!-- OpenTelemetry (provided by SPI) -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-api</artifactId>
+            <version>1.48.0</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-context</artifactId>
+            <version>1.48.0</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Trino JDBC for SQL execution -->
         <dependency>
             <groupId>io.trino</groupId>
             <artifactId>trino-jdbc</artifactId>
@@ -76,19 +105,21 @@
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-api</artifactId>
+            <version>5.11.4</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <version>5.11.4</version>
             <scope>test</scope>
         </dependency>
 
         <dependency>
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
-            <scope>test</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>io.trino</groupId>
-            <artifactId>trino-testing</artifactId>
-            <version>${trino.version}</version>
+            <version>3.27.3</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -96,10 +127,36 @@
     <build>
         <plugins>
             <plugin>
-                <groupId>io.trino</groupId>
-                <artifactId>trino-maven-plugin</artifactId>
-                <version>14</version>
-                <extensions>true</extensions>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <release>21</release>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.5.2</version>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>3.7.1</version>
+                <configuration>
+                    <descriptorRefs>
+                        <descriptorRef>jar-with-dependencies</descriptorRef>
+                    </descriptorRefs>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>make-assembly</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
