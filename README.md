@@ -1,4 +1,4 @@
-# Just Ask Trino
+# Just Ask Trino!
 
 Ask questions in natural language, get SQL results -- as a Trino table function.
 
@@ -6,7 +6,7 @@ Ask questions in natural language, get SQL results -- as a Trino table function.
 
 ## Quick Start
 
-1. **Build the plugin** (or grab a release JAR):
+1. **Build the plugin**:
 
    ```bash
    mvn clean package
@@ -26,30 +26,111 @@ Ask questions in natural language, get SQL results -- as a Trino table function.
    executor.jdbc-url=jdbc:trino://localhost:8080
    ```
 
-4. **Create catalog documentation** for any catalogs you want the LLM to know about (see [Catalog Documentation](#catalog-documentation) below).
+4. **Create catalog documentation** for any catalogs you want the LLM to know about (see [Catalog Documentation](#catalog-documentation)).
 
 5. **Restart Trino**.
 
-## Usage Examples
+## Examples
+
+All examples below were tested against Trino's built-in `tpch` connector (sf1 scale) using Ollama with `glm4:latest`.
+
+### Generate SQL with `query()`
+
+Returns a single column `sql` containing the generated SQL:
 
 ```sql
--- Generate SQL from a question (returns a VARCHAR column with the SQL)
-SELECT * FROM TABLE(justask.system.query('What are the top 10 customers by total order value?', 'tpch'))
-
--- Generate AND execute in one step (returns the actual result set)
-SELECT * FROM TABLE(justask.system.ask('Show me revenue by nation for 1995', 'tpch'))
-
--- Unscoped — no catalog docs, LLM works from the question alone
-SELECT * FROM TABLE(justask.system.query('SELECT 1'))
-
--- Composable with JOINs
-SELECT a.*, r.name AS region_name
-FROM TABLE(justask.system.ask('top 5 nations by order count', 'tpch')) a
-JOIN tpch.sf1.region r ON a.regionkey = r.regionkey
+SELECT * FROM TABLE(justask.system.query(
+  'What are the top 5 nations by total order revenue?',
+  'tpch'
+));
 ```
 
-- `query(question)` or `query(question, catalog)` -- returns a single-row, single-column result containing the generated SQL.
-- `ask(question, catalog)` -- generates SQL via the LLM, then executes it against Trino and returns the result set.
+```
+                                              sql
+-----------------------------------------------------------------------------------------------
+ SELECT n.name AS nation, SUM(o.totalprice) AS total_revenue                                  +
+ FROM tpch.sf1.orders o                                                                       +
+ JOIN tpch.sf1.customer c ON o.custkey = c.custkey                                             +
+ JOIN tpch.sf1.nation n ON c.nationkey = n.nationkey                                           +
+ GROUP BY n.name                                                                               +
+ ORDER BY total_revenue DESC                                                                   +
+ LIMIT 5
+(1 row)
+```
+
+### Simple `ask()` — count with grouping
+
+Generates SQL _and_ executes it, returning the result set directly:
+
+```sql
+SELECT * FROM TABLE(justask.system.ask(
+  'How many customers are in each market segment?',
+  'tpch'
+));
+```
+
+```
+  mktsegment  | customer_count
+--------------+----------------
+ AUTOMOBILE   | 29752
+ BUILDING     | 30142
+ FURNITURE    | 29968
+ HOUSEHOLD    | 30189
+ MACHINERY    | 29949
+(5 rows)
+```
+
+### Aggregation with `ask()`
+
+```sql
+SELECT * FROM TABLE(justask.system.ask(
+  'Which 3 nations have the most suppliers?',
+  'tpch'
+));
+```
+
+```
+    nation    | supplier_count
+--------------+----------------
+ UNITED STATES|            409
+ CANADA       |            420
+ GERMANY      |            428
+(3 rows)
+```
+
+### Unscoped mode — no catalog docs
+
+Without a catalog argument, the LLM works from the question alone:
+
+```sql
+SELECT * FROM TABLE(justask.system.query(
+  'Write a query to list all schemas in the tpch catalog'
+));
+```
+
+```
+              sql
+-------------------------------
+ SHOW SCHEMAS FROM tpch
+(1 row)
+```
+
+### Composable with standard SQL
+
+Table functions return regular result sets, so you can compose them:
+
+```sql
+-- Use ask() results in a subquery
+SELECT * FROM TABLE(justask.system.ask(
+  'top 5 nations by order count',
+  'tpch'
+)) WHERE order_count > 50000;
+
+-- JOIN ask() with other tables
+SELECT a.*, r.name AS region_name
+FROM TABLE(justask.system.ask('top 5 nations by order count', 'tpch')) a
+JOIN tpch.sf1.region r ON a.regionkey = r.regionkey;
+```
 
 ## Configuration
 
@@ -69,6 +150,18 @@ All properties go in `etc/catalog/justask.properties`.
 | `executor.jdbc-url` | `jdbc:trino://localhost:8080` | JDBC URL used by `ask()` to execute generated SQL |
 
 The `llm.endpoint` works with any OpenAI-compatible API: OpenAI, Azure OpenAI, Ollama, vLLM, etc.
+
+### Using with Ollama
+
+```properties
+connector.name=justask
+llm.endpoint=http://host.docker.internal:11434/v1
+llm.api-key=ollama
+llm.model=glm4
+docs.base-dir=etc/justask/catalogs
+prompt.template-file=etc/justask/system-prompt.md
+executor.jdbc-url=jdbc:trino://localhost:8080
+```
 
 ## Catalog Documentation
 
@@ -126,16 +219,15 @@ The repo includes catalog documentation for Trino's built-in `tpch` connector, s
    docs.base-dir=etc/justask/catalogs
    ```
 
-   The included `etc/justask/catalogs/tpch/` directory has documentation for all TPC-H tables, business term mappings, and example queries.
+   The included `etc/justask/catalogs/tpch/` directory has documentation for all 8 TPC-H tables, business term mappings, date handling guides, and example queries.
 
-3. **Try some questions**:
+3. **Run the example script** (requires Docker or Podman):
 
-   ```sql
-   SELECT * FROM TABLE(justask.system.ask('What are the top 5 nations by total revenue?', 'tpch'))
-   SELECT * FROM TABLE(justask.system.ask('Show me the largest orders over $300,000', 'tpch'))
-   SELECT * FROM TABLE(justask.system.ask('Which suppliers are in Europe?', 'tpch'))
-   SELECT * FROM TABLE(justask.system.query('Average order value by market segment', 'tpch'))
+   ```bash
+   OPENAI_API_KEY=your-key ./examples/run.sh
    ```
+
+   This builds the plugin, starts Trino in a container with the plugin and TPC-H catalog pre-configured, and runs several example queries.
 
 ## How It Works
 
@@ -153,4 +245,4 @@ The repo includes catalog documentation for Trino's built-in `tpch` connector, s
 mvn clean package
 ```
 
-The build produces a plugin JAR. Deploy it to your Trino installation's `plugin/justask/` directory.
+The build produces a plugin JAR at `target/trino-just-ask-1.0-SNAPSHOT-jar-with-dependencies.jar`. Deploy it to your Trino installation's `plugin/justask/` directory.
