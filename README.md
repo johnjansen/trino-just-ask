@@ -1,4 +1,4 @@
-# Trino Just Ask
+# Just Ask Trino
 
 Ask questions in natural language, get SQL results -- as a Trino table function.
 
