@@ -166,106 +166,49 @@ For Podman, use `host.containers.internal` instead of `host.docker.internal`.
 
 ## Using Your Own Data
 
-To use Just Ask with your own catalogs, you need to:
+### Generate documentation automatically
 
-1. Write markdown documentation describing your tables
-2. Place it where the plugin can read it
-3. Configure the paths in `justask.properties`
+The included script connects to Trino, introspects your catalog's schemas and tables, then uses an LLM to generate complete documentation — table descriptions, primary/foreign keys, relationships, join patterns, business terms, and example queries.
 
-### Step 1: Write catalog documentation
+```bash
+# Using local Ollama (default)
+./scripts/generate-catalog-docs.sh my_catalog
 
-Create a directory for your catalog with an `index.md` entry point. The LLM reads this first to discover what documentation is available, then uses its `read_doc` tool to fetch specific files on demand.
+# Specify schema, output directory, and Trino host
+./scripts/generate-catalog-docs.sh -s public -o docs/my_catalog -h trino.internal my_catalog
+
+# Using OpenAI
+./scripts/generate-catalog-docs.sh \
+    --llm-endpoint https://api.openai.com/v1 \
+    --llm-key sk-... \
+    --llm-model gpt-4o \
+    my_catalog
+```
+
+This generates:
 
 ```
-my-catalog-docs/
-├── index.md              # Entry point — required
+etc/justask/catalogs/my_catalog/
+├── index.md                    # Catalog overview with table links
 ├── tables/
-│   ├── users.md          # One file per table
+│   ├── users.md                # Columns, keys, relationships, join patterns
 │   ├── orders.md
-│   └── products.md
+│   └── ...
 ├── concepts/
-│   └── business-terms.md # Maps natural language to SQL patterns
+│   └── business-terms.md       # Natural language → SQL mappings
 └── examples/
-    └── common-queries.md # Example queries the LLM can reference
+    └── common-queries.md       # Ready-to-use example queries
 ```
 
-Only `index.md` is required. The `tables/`, `concepts/`, and `examples/` directories are a recommended convention — you can organize files however you like as long as `index.md` links to them.
+The LLM infers keys, relationships, and business terms from column names and types. Review the output and refine anything domain-specific — the generated docs are a solid starting point but you know your data best.
 
-### Step 2: Write the index file
+Run `./scripts/generate-catalog-docs.sh --help` for all options.
 
-The index should briefly describe the catalog and list every documentation file with a relative link. The LLM uses these links with `read_doc` to pull in details on demand.
+### Manual documentation
 
-```markdown
-# Sales Database
+You can also write docs by hand or edit the generated ones. Only `index.md` is required — it must list all documentation files as relative links so the LLM's `read_doc` tool can find them. See `etc/justask/catalogs/tpch/` for a complete hand-written example.
 
-The `sales` catalog contains our production sales data.
-Tables are at `sales.public.<table>`.
-
-## Tables
-- [users](tables/users.md) — User accounts and profiles
-- [orders](tables/orders.md) — Purchase orders
-- [products](tables/products.md) — Product catalog
-
-## Concepts
-- [Business terms](concepts/business-terms.md) — What "revenue", "churn", "MRR" mean in SQL
-
-## Example Queries
-- [Common queries](examples/common-queries.md)
-```
-
-### Step 3: Write table documentation
-
-For each table, document the fully qualified name, columns, types, keys, and common join patterns. The more context you give, the better the LLM's SQL will be.
-
-```markdown
-# users
-
-Schema: `sales.public.users`
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | BIGINT | Primary key |
-| email | VARCHAR | Unique email address |
-| name | VARCHAR | Display name |
-| plan | VARCHAR | Subscription plan: free, pro, enterprise |
-| created_at | TIMESTAMP | Account creation date |
-| country_code | VARCHAR | ISO 3166-1 alpha-2 country code |
-
-## Primary Key
-- `id`
-
-## Relationships
-- Referenced by `orders.user_id`
-
-## Common Join Patterns
-
-### User with order summary
-​```sql
-SELECT u.name, u.plan,
-       COUNT(o.id) AS order_count,
-       SUM(o.total) AS total_spent
-FROM sales.public.users u
-JOIN sales.public.orders o ON o.user_id = u.id
-GROUP BY u.name, u.plan
-​```
-```
-
-### Step 4: Write business terms (optional but recommended)
-
-Business terms map natural language to SQL patterns. This dramatically improves accuracy for domain-specific questions.
-
-```markdown
-# Business Terms
-
-- **"revenue"** → `SUM(o.total)`
-- **"MRR"** → `SUM(o.total) / 12` for annual plans, `SUM(o.total)` for monthly
-- **"churn"** → users with no orders in the last 90 days
-- **"top" / "best"** → `ORDER BY <metric> DESC LIMIT N`
-- **"active users"** → users with at least one order in the last 30 days
-- **"by region"** → `GROUP BY u.country_code`
-```
-
-### Step 5: Deploy the documentation
+### Deploy the documentation
 
 The `docs.base-dir` property points to a directory containing one subdirectory per catalog. The subdirectory name must match the catalog name you pass to `query()` or `ask()`.
 
