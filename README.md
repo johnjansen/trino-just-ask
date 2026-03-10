@@ -164,71 +164,172 @@ executor.jdbc-url=jdbc:trino://localhost:8080
 
 For Podman, use `host.containers.internal` instead of `host.docker.internal`.
 
-## Catalog Documentation
+## Using Your Own Data
 
-Catalog docs tell the LLM about your data. Without them (unscoped mode), the LLM can only work from the question text. With them, it reads schema details, business concepts, and example queries on demand.
+To use Just Ask with your own catalogs, you need to:
 
-### Directory Structure
+1. Write markdown documentation describing your tables
+2. Place it where the plugin can read it
+3. Configure the paths in `justask.properties`
+
+### Step 1: Write catalog documentation
+
+Create a directory for your catalog with an `index.md` entry point. The LLM reads this first to discover what documentation is available, then uses its `read_doc` tool to fetch specific files on demand.
 
 ```
-etc/justask/catalogs/<catalog-name>/
-├── index.md              # Entry point — the LLM reads this first
+my-catalog-docs/
+├── index.md              # Entry point — required
 ├── tables/
-│   ├── customers.md      # Table schema, columns, relationships
-│   └── orders.md
+│   ├── users.md          # One file per table
+│   ├── orders.md
+│   └── products.md
 ├── concepts/
 │   └── business-terms.md # Maps natural language to SQL patterns
 └── examples/
     └── common-queries.md # Example queries the LLM can reference
 ```
 
-### Index File
+Only `index.md` is required. The `tables/`, `concepts/`, and `examples/` directories are a recommended convention — you can organize files however you like as long as `index.md` links to them.
 
-The `index.md` is the entry point. It should list all tables with links, and optionally reference concept and example files. The LLM reads this first to understand what documentation is available.
+### Step 2: Write the index file
+
+The index should briefly describe the catalog and list every documentation file with a relative link. The LLM uses these links with `read_doc` to pull in details on demand.
 
 ```markdown
-# My Catalog
+# Sales Database
+
+The `sales` catalog contains our production sales data.
+Tables are at `sales.public.<table>`.
 
 ## Tables
-- [customers](tables/customers.md) — Customer master data
-- [orders](tables/orders.md) — Order history
+- [users](tables/users.md) — User accounts and profiles
+- [orders](tables/orders.md) — Purchase orders
+- [products](tables/products.md) — Product catalog
 
 ## Concepts
-- [Business terms](concepts/business-terms.md) — Maps "best", "top", "revenue" to query patterns
+- [Business terms](concepts/business-terms.md) — What "revenue", "churn", "MRR" mean in SQL
 
 ## Example Queries
 - [Common queries](examples/common-queries.md)
 ```
 
-### How the LLM Uses Docs
+### Step 3: Write table documentation
 
-The LLM operates in an agent loop. When a catalog is specified, the LLM receives the `index.md` content and has access to a `read_doc` tool. It can call `read_doc(path)` to read any file referenced in the index (or referenced from other docs). This lets the LLM pull in only the documentation it needs for a given question, rather than stuffing everything into the prompt.
+For each table, document the fully qualified name, columns, types, keys, and common join patterns. The more context you give, the better the LLM's SQL will be.
+
+```markdown
+# users
+
+Schema: `sales.public.users`
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | BIGINT | Primary key |
+| email | VARCHAR | Unique email address |
+| name | VARCHAR | Display name |
+| plan | VARCHAR | Subscription plan: free, pro, enterprise |
+| created_at | TIMESTAMP | Account creation date |
+| country_code | VARCHAR | ISO 3166-1 alpha-2 country code |
+
+## Primary Key
+- `id`
+
+## Relationships
+- Referenced by `orders.user_id`
+
+## Common Join Patterns
+
+### User with order summary
+​```sql
+SELECT u.name, u.plan,
+       COUNT(o.id) AS order_count,
+       SUM(o.total) AS total_spent
+FROM sales.public.users u
+JOIN sales.public.orders o ON o.user_id = u.id
+GROUP BY u.name, u.plan
+​```
+```
+
+### Step 4: Write business terms (optional but recommended)
+
+Business terms map natural language to SQL patterns. This dramatically improves accuracy for domain-specific questions.
+
+```markdown
+# Business Terms
+
+- **"revenue"** → `SUM(o.total)`
+- **"MRR"** → `SUM(o.total) / 12` for annual plans, `SUM(o.total)` for monthly
+- **"churn"** → users with no orders in the last 90 days
+- **"top" / "best"** → `ORDER BY <metric> DESC LIMIT N`
+- **"active users"** → users with at least one order in the last 30 days
+- **"by region"** → `GROUP BY u.country_code`
+```
+
+### Step 5: Deploy the documentation
+
+The `docs.base-dir` property points to a directory containing one subdirectory per catalog. The subdirectory name must match the catalog name you pass to `query()` or `ask()`.
+
+```
+<docs.base-dir>/
+├── sales/           # matches ask('...', 'sales')
+│   ├── index.md
+│   └── tables/
+├── analytics/       # matches ask('...', 'analytics')
+│   ├── index.md
+│   └── tables/
+```
+
+#### Bare metal / VM
+
+Place docs anywhere on the Trino server filesystem and set `docs.base-dir` to that path:
+
+```properties
+docs.base-dir=/opt/trino/justask/catalogs
+```
+
+#### Docker / Podman
+
+Mount your docs directory into the container. The plugin reads docs from inside the container, so `docs.base-dir` must be the container path:
+
+```properties
+# In justask.properties (container path):
+docs.base-dir=/etc/trino/justask/catalogs
+```
+
+```bash
+# Mount when starting the container:
+docker run -d \
+    -v /path/to/my-docs:/etc/trino/justask/catalogs \
+    -v /path/to/system-prompt.md:/etc/trino/justask/system-prompt.md \
+    -v /path/to/just-ask-trino.jar:/usr/lib/trino/plugin/justask/just-ask-trino.jar \
+    -p 8080:8080 \
+    trinodb/trino:473
+```
+
+The system prompt template (`prompt.template-file`) also needs to be accessible at the configured path inside the container. The repo includes a default at `etc/justask/system-prompt.md`.
+
+### How the LLM uses docs
+
+The LLM operates in an agent loop. When a catalog is specified:
+
+1. The `index.md` content is included in the initial prompt
+2. The LLM has a `read_doc` tool it can call with a relative path (e.g. `read_doc("tables/users.md")`)
+3. The LLM reads only the files it needs for the question, keeping context focused
+4. After gathering enough context, it generates SQL
+
+This means you can document dozens of tables without bloating every request — the LLM only reads what's relevant.
 
 ## Testing with TPC-H
 
-The repo includes catalog documentation for Trino's built-in `tpch` connector, so you can test immediately.
+The repo includes complete catalog documentation for Trino's built-in `tpch` connector at `etc/justask/catalogs/tpch/`. This is a good reference when writing docs for your own catalogs — it covers all 8 TPC-H tables, business term mappings, date handling guides, and example queries.
 
-1. **Enable the tpch catalog** in Trino (add `etc/catalog/tpch.properties`):
+**Run the example script** (requires Docker or Podman):
 
-   ```properties
-   connector.name=tpch
-   ```
+```bash
+OPENAI_API_KEY=your-key ./examples/run.sh
+```
 
-2. **Point `docs.base-dir`** to the included docs (this is the default):
-
-   ```properties
-   docs.base-dir=etc/justask/catalogs
-   ```
-
-   The included `etc/justask/catalogs/tpch/` directory has documentation for all 8 TPC-H tables, business term mappings, date handling guides, and example queries.
-
-3. **Run the example script** (requires Docker or Podman):
-
-   ```bash
-   OPENAI_API_KEY=your-key ./examples/run.sh
-   ```
-
-   This builds the plugin, starts Trino in a container with the plugin and TPC-H catalog pre-configured, and runs several example queries.
+This builds the plugin, starts Trino in a container with the plugin and TPC-H catalog pre-configured, and runs several example queries. For Ollama, set the endpoint in `examples/trino-config/catalog/justask.properties` before running.
 
 ## How It Works
 
