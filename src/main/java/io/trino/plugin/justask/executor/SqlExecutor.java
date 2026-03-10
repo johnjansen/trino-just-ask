@@ -4,6 +4,7 @@ import io.trino.spi.TrinoException;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.util.Properties;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -20,11 +21,19 @@ public class SqlExecutor
     public SqlExecutor(String jdbcUrl)
     {
         this.jdbcUrl = jdbcUrl;
+        try {
+            Class.forName("io.trino.jdbc.TrinoDriver");
+        }
+        catch (ClassNotFoundException e) {
+            throw new RuntimeException("Trino JDBC driver not found on classpath", e);
+        }
     }
 
     public SqlResult execute(String sql)
     {
-        try (Connection conn = DriverManager.getConnection(jdbcUrl);
+        Properties props = new Properties();
+        props.setProperty("user", "justask");
+        try (Connection conn = DriverManager.getConnection(jdbcUrl, props);
                 Statement stmt = conn.createStatement();
                 ResultSet rs = stmt.executeQuery(sql)) {
             ResultSetMetaData meta = rs.getMetaData();

@@ -14,12 +14,12 @@ import io.trino.spi.function.table.ScalarArgument;
 import io.trino.spi.function.table.ScalarArgumentSpecification;
 import io.trino.spi.function.table.TableFunctionAnalysis;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 import static io.trino.spi.function.table.Descriptor.descriptor;
-
 import static io.trino.spi.type.VarcharType.VARCHAR;
 
 public class AskFunction
@@ -68,6 +68,16 @@ public class AskFunction
         String generatedSql = agentLoop.generateSql(question, catalog);
         SqlExecutor.SqlResult result = sqlExecutor.execute(generatedSql);
 
+        // Convert all values to strings for storage in the handle
+        List<List<String>> stringRows = new ArrayList<>();
+        for (List<Object> row : result.rows()) {
+            List<String> stringRow = new ArrayList<>();
+            for (Object value : row) {
+                stringRow.add(value != null ? value.toString() : null);
+            }
+            stringRows.add(stringRow);
+        }
+
         List<String> columnNames = result.columnNames();
         io.trino.spi.function.table.Descriptor returnedType = descriptor(
                 columnNames,
@@ -75,7 +85,7 @@ public class AskFunction
 
         return TableFunctionAnalysis.builder()
                 .returnedType(returnedType)
-                .handle(new AskFunctionHandle(question, catalog, generatedSql))
+                .handle(new AskFunctionHandle(question, catalog, generatedSql, columnNames, stringRows))
                 .build();
     }
 }

@@ -90,10 +90,18 @@ public class AgentLoop
 
     public static String extractSql(String response)
     {
+        String sql;
         Matcher matcher = SQL_CODE_BLOCK.matcher(response);
         if (matcher.find()) {
-            return matcher.group(1).trim();
+            sql = matcher.group(1).trim();
         }
-        return response.trim();
+        else {
+            sql = response.trim();
+        }
+        // Strip trailing semicolons — Trino doesn't accept them via JDBC
+        while (sql.endsWith(";")) {
+            sql = sql.substring(0, sql.length() - 1).trim();
+        }
+        return sql;
     }
 }
