@@ -26,7 +26,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>io.trino.plugin</groupId>
-    <artifactId>trino-just-ask</artifactId>
+    <artifactId>just-ask-trino</artifactId>
     <version>1.0-SNAPSHOT</version>
     <packaging>trino-plugin</packaging>
 

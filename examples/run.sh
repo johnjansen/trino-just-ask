@@ -17,7 +17,7 @@ echo "=== Building plugin ==="
 cd "$PROJECT_DIR"
 JAVA_HOME="${JAVA_HOME:-/opt/homebrew/Cellar/openjdk/25.0.2/libexec/openjdk.jdk/Contents/Home}" \
     mvn clean package -DskipTests -q
-JAR="$PROJECT_DIR/target/trino-just-ask-1.0-SNAPSHOT-jar-with-dependencies.jar"
+JAR="$PROJECT_DIR/target/just-ask-trino-1.0-SNAPSHOT-jar-with-dependencies.jar"
 echo "Built: $JAR"
 
 # Copy TPC-H catalog docs
@@ -36,7 +36,7 @@ docker run -d \
     -p 8080:8080 \
     -v "$SCRIPT_DIR/trino-config/catalog:/etc/trino/catalog" \
     -v "$SCRIPT_DIR/trino-config/justask:/etc/trino/justask" \
-    -v "$JAR:/usr/lib/trino/plugin/justask/trino-just-ask.jar" \
+    -v "$JAR:/usr/lib/trino/plugin/justask/just-ask-trino.jar" \
     -e "OPENAI_API_KEY=$OPENAI_API_KEY" \
     trinodb/trino:473
 

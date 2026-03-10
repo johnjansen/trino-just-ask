@@ -245,4 +245,4 @@ The repo includes catalog documentation for Trino's built-in `tpch` connector, s
 mvn clean package
 ```
 
-The build produces a plugin JAR at `target/trino-just-ask-1.0-SNAPSHOT-jar-with-dependencies.jar`. Deploy it to your Trino installation's `plugin/justask/` directory.
+The build produces a plugin JAR at `target/just-ask-trino-1.0-SNAPSHOT-jar-with-dependencies.jar`. Deploy it to your Trino installation's `plugin/justask/` directory.
