@@ -2,3 +2,4 @@ target/
 .claude/
 *.iml
 .idea/
+docs/
