@@ -1,0 +1,11 @@
+services:
+  trino:
+    image: trinodb/trino:473
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./trino-config/catalog:/etc/trino/catalog
+      - ./trino-config/justask:/etc/trino/justask
+      - ../target/trino-just-ask-1.0-SNAPSHOT-jar-with-dependencies.jar:/usr/lib/trino/plugin/justask/trino-just-ask.jar
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
