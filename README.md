@@ -32,7 +32,7 @@ Ask questions in natural language, get SQL results -- as a Trino table function.
 
 ## Examples
 
-All examples below were tested against Trino's built-in `tpch` connector (sf1 scale) using Ollama with `glm4:latest`.
+All examples below were tested against Trino's built-in `tpch` connector (sf1 scale) using Ollama with `glm-5:cloud`. Output varies between runs since the LLM generates SQL dynamically.
 
 ### Generate SQL with `query()`
 
@@ -46,16 +46,15 @@ SELECT * FROM TABLE(justask.system.query(
 ```
 
 ```
-                                              sql
------------------------------------------------------------------------------------------------
- SELECT n.name AS nation, SUM(o.totalprice) AS total_revenue                                  +
- FROM tpch.sf1.orders o                                                                       +
- JOIN tpch.sf1.customer c ON o.custkey = c.custkey                                             +
- JOIN tpch.sf1.nation n ON c.nationkey = n.nationkey                                           +
- GROUP BY n.name                                                                               +
- ORDER BY total_revenue DESC                                                                   +
- LIMIT 5
-(1 row)
+SELECT n.name AS nation,
+       SUM(l.extendedprice * (1 - l.discount)) AS total_revenue
+FROM tpch.sf1.lineitem l
+JOIN tpch.sf1.orders o ON l.orderkey = o.orderkey
+JOIN tpch.sf1.customer c ON o.custkey = c.custkey
+JOIN tpch.sf1.nation n ON c.nationkey = n.nationkey
+GROUP BY n.name
+ORDER BY total_revenue DESC
+LIMIT 5
 ```
 
 ### Simple `ask()` — count with grouping
@@ -70,13 +69,13 @@ SELECT * FROM TABLE(justask.system.ask(
 ```
 
 ```
-  mktsegment  | customer_count
---------------+----------------
- AUTOMOBILE   | 29752
- BUILDING     | 30142
- FURNITURE    | 29968
- HOUSEHOLD    | 30189
- MACHINERY    | 29949
+ mktsegment | customer_count
+------------+----------------
+ HOUSEHOLD  | 30189
+ BUILDING   | 30142
+ FURNITURE  | 29968
+ MACHINERY  | 29949
+ AUTOMOBILE | 29752
 (5 rows)
 ```
 
@@ -90,11 +89,11 @@ SELECT * FROM TABLE(justask.system.ask(
 ```
 
 ```
-    nation    | supplier_count
---------------+----------------
- UNITED STATES|            409
- CANADA       |            420
- GERMANY      |            428
+ nation  | supplier_count
+---------+----------------
+ IRAQ    | 438
+ PERU    | 421
+ ALGERIA | 420
 (3 rows)
 ```
 
@@ -156,12 +155,14 @@ The `llm.endpoint` works with any OpenAI-compatible API: OpenAI, Azure OpenAI, O
 ```properties
 connector.name=justask
 llm.endpoint=http://host.docker.internal:11434/v1
-llm.api-key=ollama
-llm.model=glm4
+llm.api-key=unused
+llm.model=glm-5:cloud
 docs.base-dir=etc/justask/catalogs
 prompt.template-file=etc/justask/system-prompt.md
 executor.jdbc-url=jdbc:trino://localhost:8080
 ```
+
+For Podman, use `host.containers.internal` instead of `host.docker.internal`.
 
 ## Catalog Documentation
 
